@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TPC-H Query 3 Stream Processing Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f7fa;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            color: #2c3e50;
+            margin: 0 0 10px 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .header p {
+            color: #7f8c8d;
+            margin: 0;
+            font-size: 14px;
+        }
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .dashboard-item {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .dashboard-item h3 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 16px;
+            font-weight: 600;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        .flow-diagram-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .flow-diagram-container h3 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 16px;
+            font-weight: 600;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .download-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+        .download-btn:hover {
+            background: #2980b9;
+        }
+        #flowDiagram {
+            width: 100%;
+            height: 400px;
+            border: 1px solid #ecf0f1;
+            border-radius: 6px;
+            background: #fdfdfd;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .metric-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-left: 4px solid #3498db;
+        }
+        .metric-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+        .metric-label {
+            font-size: 14px;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .metric-card.revenue { border-left-color: #27ae60; }
+        .metric-card.orders { border-left-color: #e74c3c; }
+        .metric-card.throughput { border-left-color: #f39c12; }
+        .metric-card.latency { border-left-color: #9b59b6; }
+        .instructions {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .instructions h3 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 16px;
+        }
+        .instructions ol {
+            margin: 15px 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin: 8px 0;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .instructions code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .flow-diagram {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .flow-diagram h3 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 16px;
+        }
+        .diagram-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .flow-step {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        .step-box {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            min-width: 120px;
+            transition: all 0.2s ease;
+        }
+        .step-box:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .step-box.source { border-color: #3498db; }
+        .step-box.filter { border-color: #e74c3c; }
+        .step-box.join { border-color: #f39c12; }
+        .step-box.aggregate { border-color: #27ae60; }
+        .step-box.topn { border-color: #9b59b6; }
+        .step-box.output { border-color: #34495e; }
+        .step-title {
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 8px;
+            color: #2c3e50;
+        }
+        .step-desc {
+            font-size: 11px;
+            color: #7f8c8d;
+            line-height: 1.3;
+        }
+        .arrow {
+            font-size: 18px;
+            color: #bdc3c7;
+            margin: 0 10px;
+            font-weight: bold;
+        }
+        .parallel-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+        }
+        .parallel-info p {
+            margin: 8px 0;
+            font-size: 13px;
+            color: #5a6c7d;
+        }
+        .status {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #e74c3c;
+            margin-right: 10px;
+            display: inline-block;
+        }
+        .status-dot.connected {
+            background: #27ae60;
+        }
+        .status-info {
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+        }
+        .last-update {
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        .table-container, .thread-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .table-container h3, .thread-container h3 {
+            margin-top: 0;
+            color: #2c3e50;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ecf0f1;
+            font-size: 13px;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        tr:hover {
+            background: #f8f9fa;
+        }
+        .rank-1 { 
+            background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+            font-weight: bold;
+            border-radius: 4px;
+            color: #8b6914;
+        }
+        .rank-2 { 
+            background: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%);
+            font-weight: bold;
+            border-radius: 4px;
+            color: #5a5a5a;
+        }
+        .rank-3 { 
+            background: linear-gradient(135deg, #cd7f32 0%, #daa555 100%);
+            font-weight: bold;
+            border-radius: 4px;
+            color: #5d3a0f;
+        }
+        .orderkey {
+            font-family: 'Courier New', monospace;
+            font-weight: 500;
+        }
+        .revenue {
+            font-weight: 600;
+            color: #27ae60;
+            text-align: right;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+            font-style: italic;
+        }
+        .thread-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .thread-card {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 12px;
+            border-left: 3px solid #3498db;
+            transition: all 0.2s ease;
+            font-size: 12px;
+        }
+        .thread-card.important {
+            border-left: 3px solid #e74c3c;
+            background: #fff5f5;
+        }
+        .thread-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+        }
+        .thread-name {
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #2c3e50;
+            word-break: break-all;
+            font-size: 11px;
+        }
+        .thread-info {
+            margin: 3px 0;
+            color: #7f8c8d;
+            font-size: 10px;
+        }
+        .thread-type {
+            display: inline-block;
+            padding: 1px 4px;
+            border-radius: 2px;
+            font-size: 9px;
+            font-weight: bold;
+            color: white;
+            margin-left: 6px;
+        }
+        .type-important { background: #e74c3c; }
+        .type-normal { background: #95a5a6; }
+        .thread-state {
+            display: inline-block;
+            padding: 1px 4px;
+            border-radius: 2px;
+            font-size: 9px;
+            font-weight: bold;
+            color: white;
+        }
+        .state-RUNNABLE { background: #27ae60; }
+        .state-BLOCKED { background: #e74c3c; }
+        .state-WAITING { background: #f39c12; }
+        .state-TIMED_WAITING { background: #e67e22; }
+        .state-NEW { background: #3498db; }
+        .state-TERMINATED { background: #95a5a6; }
+        
+        /* D3 Flow Diagram Styles */
+        .node {
+            cursor: pointer;
+        }
+        .node rect {
+            stroke: #333;
+            stroke-width: 2px;
+            fill: #7fb3d3;
+            rx: 8;
+            ry: 8;
+        }
+        .node.source rect { fill: #3498db; }
+        .node.filter rect { fill: #e74c3c; }
+        .node.join rect { fill: #f39c12; }
+        .node.aggregate rect { fill: #27ae60; }
+        .node.topn rect { fill: #9b59b6; }
+        .node.output rect { fill: #34495e; }
+        .node.active rect {
+            stroke: #2ecc71;
+            stroke-width: 3px;
+            filter: drop-shadow(0 0 6px #2ecc71);
+        }
+        .node text {
+            fill: white;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            pointer-events: none;
+        }
+        .link {
+            fill: none;
+            stroke: #666;
+            stroke-width: 2;
+            marker-end: url(#end);
+        }
+        .link.active {
+            stroke: #2ecc71;
+            stroke-width: 3;
+            animation: flow 2s infinite;
+        }
+        .flow-arrow {
+            fill: #666;
+        }
+        .flow-arrow.active {
+            fill: #2ecc71;
+        }
+        .throughput-label {
+            font-size: 10px;
+            fill: #666;
+            text-anchor: middle;
+        }
+        @keyframes flow {
+            0% { stroke-dasharray: 5, 5; stroke-dashoffset: 10; }
+            100% { stroke-dasharray: 5, 5; stroke-dashoffset: 0; }
+        }
+        .tooltip {
+            position: absolute;
+            text-align: center;
+            padding: 8px;
+            font-size: 12px;
+            background: #333;
+            color: white;
+            border-radius: 4px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+        
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        @media (max-width: 768px) {
+            .diagram-container {
+                flex-direction: column;
+            }
+            .arrow {
+                transform: rotate(90deg);
+                margin: 5px 0;
+            }
+            .flow-step {
+                flex-direction: column;
+                margin: 0;
+            }
+            .status {
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }
+            .metrics-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>TPC-H Query 3 Stream Processing Dashboard</h1>
+        <p>Real-time Top-20 orders by revenue using Apache Flink</p>
+    </div>
+
+    <!-- Metrics Cards -->
+    <div class="metrics-grid">
+        <div class="metric-card revenue">
+            <div class="metric-value" id="totalRevenue">$0</div>
+            <div class="metric-label">Total Revenue</div>
+        </div>
+        <div class="metric-card orders">
+            <div class="metric-value" id="totalOrders">0</div>
+            <div class="metric-label">Active Orders</div>
+        </div>
+        <div class="metric-card throughput">
+            <div class="metric-value" id="throughput">0</div>
+            <div class="metric-label">Records/sec</div>
+        </div>
+        <div class="metric-card latency">
+            <div class="metric-value" id="avgLatency">0ms</div>
+            <div class="metric-label">Avg Latency</div>
+        </div>
+    </div>
+
+    <!-- Real-time Flow Diagram -->
+    <div class="flow-diagram-container">
+        <h3>
+            Real-time Processing Flow Diagram
+            <button class="download-btn" onclick="downloadFlowDiagram()">Download Flow Diagram</button>
+        </h3>
+        <svg id="flowDiagram"></svg>
+        <div class="tooltip" id="tooltip"></div>
+    </div>
+
+    <!-- Dashboard Charts -->
+    <div class="dashboard-grid">
+        <div class="dashboard-item">
+            <h3>Real-time Revenue Trend</h3>
+            <div class="chart-container">
+                <canvas id="revenueChart"></canvas>
+            </div>
+        </div>
+        <div class="dashboard-item">
+            <h3>Top Orders Revenue Distribution</h3>
+            <div class="chart-container">
+                <canvas id="distributionChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="dashboard-item">
+            <h3>Processing Timeline</h3>
+            <div class="chart-container">
+                <canvas id="timelineChart"></canvas>
+            </div>
+        </div>
+        <div class="dashboard-item">
+            <h3>Order Date Distribution</h3>
+            <div class="chart-container">
+                <canvas id="dateChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="instructions">
+        <h3>Usage Instructions:</h3>
+        <ol>
+            <li><strong>Start Backend:</strong> Run <code>./run_realtime_demo.sh</code> in terminal</li>
+            <li><strong>View Results:</strong> This dashboard will automatically connect and display real-time analytics</li>
+            <li><strong>Stop System:</strong> Press Ctrl+C to stop backend, dashboard will retain last results</li>
+        </ol>
+        <p><strong>Recommended:</strong> Use HTTP server: <code>python3 -m http.server 3000</code> then visit <code>http://localhost:3000</code></p>
+    </div>
+
+    <div class="flow-diagram">
+        <h3>Flink Stream Processing Architecture</h3>
+        <div class="diagram-container">
+            <div class="flow-step">
+                <div class="step-box source">
+                    <div class="step-title">Data Source</div>
+                    <div class="step-desc">streamdata.csv<br/>Stream Reading</div>
+                </div>
+                <div class="arrow">→</div>
+            </div>
+
+            <div class="flow-step">
+                <div class="step-box filter">
+                    <div class="step-title">Filters</div>
+                    <div class="step-desc">Customer: BUILDING<br/>Orders: < 1995-03-15<br/>LineItem: > 1995-03-15</div>
+                </div>
+                <div class="arrow">→</div>
+            </div>
+
+            <div class="flow-step">
+                <div class="step-box join">
+                    <div class="step-title">JOIN Operations</div>
+                    <div class="step-desc">Customer ⋈ Orders<br/>⋈ LineItem<br/>State Management</div>
+                </div>
+                <div class="arrow">→</div>
+            </div>
+
+            <div class="flow-step">
+                <div class="step-box aggregate">
+                    <div class="step-title">Aggregation</div>
+                    <div class="step-desc">Group by Order<br/>Calculate Revenue<br/>Sum(price × discount)</div>
+                </div>
+                <div class="arrow">→</div>
+            </div>
+
+            <div class="flow-step">
+                <div class="step-box topn">
+                    <div class="step-title">TopN Ranking</div>
+                    <div class="step-desc">Sort by Revenue<br/>Maintain Top-20<br/>Real-time Update</div>
+                </div>
+                <div class="arrow">→</div>
+            </div>
+
+            <div class="flow-step">
+                <div class="step-box output">
+                    <div class="step-title">Output</div>
+                    <div class="step-desc">WebSocket Push<br/>Frontend Display<br/>3s Interval</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="parallel-info">
+            <p><strong>Parallel Processing:</strong> System supports multi-parallelism with configurable task slots</p>
+            <p><strong>State Management:</strong> Flink manages JOIN and aggregation state with fault tolerance</p>
+            <p><strong>Low Latency:</strong> End-to-end processing latency typically in milliseconds</p>
+        </div>
+    </div>
+
+    <div class="status">
+        <div class="status-info">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="connectionStatus">Initializing connection...</span>
+        </div>
+        <div class="last-update">Last Update: <span id="lastUpdate">--</span></div>
+    </div>
+
+    <div class="table-container">
+        <h3>Revenue Rankings (Sorted by Revenue DESC)</h3>
+        <div id="tableContent">
+            <div class="loading">Waiting for connection to Flink stream processing system...</div>
+        </div>
+    </div>
+
+    <div class="thread-container">
+        <h3>Flink Runtime Thread Monitor</h3>
+        <div id="threadContent">
+            <div class="loading">Waiting for thread information...</div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let reconnectInterval = null;
+        let lastData = null;
+        
+        // Chart instances
+        let revenueChart = null;
+        let distributionChart = null;
+        let timelineChart = null;
+        let dateChart = null;
+        
+        // D3 Flow Diagram
+        let flowSvg = null;
+        let flowSimulation = null;
+        
+        // Data storage for charts
+        let revenueHistory = [];
+        let processedRecords = 0;
+        let startTime = Date.now();
+
+        const statusDot = document.getElementById('statusDot');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const lastUpdate = document.getElementById('lastUpdate');
+        const tableContent = document.getElementById('tableContent');
+        const threadContent = document.getElementById('threadContent');
+
+        // Flow diagram data
+        const flowNodes = [
+            { id: 'source', name: 'Source\nReader', type: 'source', x: 100, y: 200 },
+            { id: 'customer-filter', name: 'Customer\nFilter', type: 'filter', x: 250, y: 120 },
+            { id: 'orders-filter', name: 'Orders\nFilter', type: 'filter', x: 250, y: 200 },
+            { id: 'lineitem-filter', name: 'LineItem\nFilter', type: 'filter', x: 250, y: 280 },
+            { id: 'customer-order-join', name: 'Customer-Order\nJOIN', type: 'join', x: 420, y: 160 },
+            { id: 'order-lineitem-join', name: 'Order-LineItem\nJOIN', type: 'join', x: 590, y: 200 },
+            { id: 'aggregate', name: 'Revenue\nAggregation', type: 'aggregate', x: 760, y: 200 },
+            { id: 'topn', name: 'TopN\nRanking', type: 'topn', x: 930, y: 200 },
+            { id: 'output', name: 'WebSocket\nOutput', type: 'output', x: 1100, y: 200 }
+        ];
+
+        const flowLinks = [
+            { source: 'source', target: 'customer-filter' },
+            { source: 'source', target: 'orders-filter' },
+            { source: 'source', target: 'lineitem-filter' },
+            { source: 'customer-filter', target: 'customer-order-join' },
+            { source: 'orders-filter', target: 'customer-order-join' },
+            { source: 'customer-order-join', target: 'order-lineitem-join' },
+            { source: 'lineitem-filter', target: 'order-lineitem-join' },
+            { source: 'order-lineitem-join', target: 'aggregate' },
+            { source: 'aggregate', target: 'topn' },
+            { source: 'topn', target: 'output' }
+        ];
+
+        // Initialize flow diagram
+        function initializeFlowDiagram() {
+            const container = d3.select('#flowDiagram');
+            const containerNode = container.node();
+            const width = containerNode.clientWidth || 1200;
+            const height = containerNode.clientHeight || 400;
+
+            flowSvg = container
+                .attr('width', width)
+                .attr('height', height);
+
+            // Add arrow markers
+            flowSvg.append('defs').append('marker')
+                .attr('id', 'end')
+                .attr('viewBox', '0 -5 10 10')
+                .attr('refX', 15)
+                .attr('refY', 0)
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .attr('orient', 'auto')
+                .append('path')
+                .attr('d', 'M0,-5L10,0L0,5')
+                .attr('class', 'flow-arrow');
+
+            // Create links
+            const link = flowSvg.selectAll('.link')
+                .data(flowLinks)
+                .enter().append('path')
+                .attr('class', 'link')
+                .attr('d', d => {
+                    const sourceNode = flowNodes.find(n => n.id === d.source);
+                    const targetNode = flowNodes.find(n => n.id === d.target);
+                    return `M${sourceNode.x + 80},${sourceNode.y} L${targetNode.x},${targetNode.y}`;
+                });
+
+            // Create nodes
+            const node = flowSvg.selectAll('.node')
+                .data(flowNodes)
+                .enter().append('g')
+                .attr('class', d => `node ${d.type}`)
+                .attr('transform', d => `translate(${d.x},${d.y - 20})`);
+
+            // Add rectangles for nodes
+            node.append('rect')
+                .attr('width', 80)
+                .attr('height', 40)
+                .on('mouseover', function(event, d) {
+                    showTooltip(event, d);
+                })
+                .on('mouseout', hideTooltip);
+
+            // Add text labels
+            node.append('text')
+                .attr('x', 40)
+                .attr('y', 20)
+                .text(d => d.name);
+
+            // Add throughput labels on links
+            flowSvg.selectAll('.throughput-label')
+                .data(flowLinks)
+                .enter().append('text')
+                .attr('class', 'throughput-label')
+                .attr('x', d => {
+                    const sourceNode = flowNodes.find(n => n.id === d.source);
+                    const targetNode = flowNodes.find(n => n.id === d.target);
+                    return (sourceNode.x + targetNode.x + 80) / 2;
+                })
+                .attr('y', d => {
+                    const sourceNode = flowNodes.find(n => n.id === d.source);
+                    const targetNode = flowNodes.find(n => n.id === d.target);
+                    return (sourceNode.y + targetNode.y) / 2 - 5;
+                })
+                .text('0 rec/s');
+        }
+
+        // Update flow diagram with real-time data
+        function updateFlowDiagram(data) {
+            if (!flowSvg) return;
+
+            // Simulate different throughput for different stages
+            const baseRecords = data.data ? data.data.length : 0;
+            const throughputs = {
+                'source': Math.round(baseRecords * 10 + Math.random() * 50),
+                'customer-filter': Math.round(baseRecords * 2 + Math.random() * 20),
+                'orders-filter': Math.round(baseRecords * 8 + Math.random() * 30),
+                'lineitem-filter': Math.round(baseRecords * 15 + Math.random() * 40),
+                'customer-order-join': Math.round(baseRecords * 5 + Math.random() * 25),
+                'order-lineitem-join': Math.round(baseRecords * 3 + Math.random() * 15),
+                'aggregate': Math.round(baseRecords * 2 + Math.random() * 10),
+                'topn': baseRecords,
+                'output': baseRecords
+            };
+
+            // Update node activity based on data
+            flowSvg.selectAll('.node')
+                .classed('active', d => throughputs[d.id] > 0);
+
+            // Update link activity
+            flowSvg.selectAll('.link')
+                .classed('active', d => throughputs[d.target] > 0);
+
+            // Update throughput labels
+            flowSvg.selectAll('.throughput-label')
+                .text(d => `${throughputs[d.target]} rec/s`);
+
+            // Animate arrows for active flows
+            flowSvg.selectAll('.flow-arrow')
+                .classed('active', true);
+        }
+
+        // Tooltip functions
+        function showTooltip(event, d) {
+            const tooltip = d3.select('#tooltip');
+            tooltip.transition()
+                .duration(200)
+                .style('opacity', .9);
+            tooltip.html(`<strong>${d.name}</strong><br/>Type: ${d.type}<br/>Status: Active`)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 28) + 'px');
+        }
+
+        function hideTooltip() {
+            d3.select('#tooltip').transition()
+                .duration(500)
+                .style('opacity', 0);
+        }
+
+        // Download flow diagram
+        function downloadFlowDiagram() {
+            const svgElement = document.getElementById('flowDiagram');
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            canvas.width = svgElement.clientWidth;
+            canvas.height = svgElement.clientHeight;
+            
+            img.onload = function() {
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                
+                const link = document.createElement('a');
+                link.download = 'flink-flow-diagram.png';
+                link.href = canvas.toDataURL();
+                link.click();
+            };
+            
+            const blob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            img.src = url;
+        }
+
+        // Initialize charts
+        function initializeCharts() {
+            // Revenue Trend Chart
+            const revenueCtx = document.getElementById('revenueChart').getContext('2d');
+            revenueChart = new Chart(revenueCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Top Revenue',
+                        data: [],
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }, {
+                        label: 'Average Revenue',
+                        data: [],
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        },
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true
+                        }
+                    }
+                }
+            });
+
+            // Distribution Chart
+            const distributionCtx = document.getElementById('distributionChart').getContext('2d');
+            distributionChart = new Chart(distributionCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Revenue',
+                        data: [],
+                        backgroundColor: [
+                            '#FFD700', '#C0C0C0', '#CD7F32', '#e74c3c', '#3498db',
+                            '#27ae60', '#f39c12', '#9b59b6', '#34495e', '#e67e22'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            // Timeline Chart
+            const timelineCtx = document.getElementById('timelineChart').getContext('2d');
+            timelineChart = new Chart(timelineCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Processing Rate (records/sec)',
+                        data: [],
+                        borderColor: '#27ae60',
+                        backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            // Date Distribution Chart
+            const dateCtx = document.getElementById('dateChart').getContext('2d');
+            dateChart = new Chart(dateCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            '#e74c3c', '#3498db', '#27ae60', '#f39c12', '#9b59b6',
+                            '#34495e', '#e67e22', '#95a5a6', '#16a085', '#c0392b'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateMetrics(data) {
+            if (!data.data || data.data.length === 0) return;
+
+            const revenues = data.data.map(item => item.revenue);
+            const totalRevenue = revenues.reduce((sum, rev) => sum + rev, 0);
+            const avgRevenue = totalRevenue / revenues.length;
+
+            document.getElementById('totalRevenue').textContent = '$' + totalRevenue.toLocaleString('en-US', {minimumFractionDigits: 2});
+            document.getElementById('totalOrders').textContent = data.data.length;
+            
+            // Calculate throughput
+            const currentTime = Date.now();
+            const elapsedSeconds = (currentTime - startTime) / 1000;
+            const throughput = Math.round(processedRecords / elapsedSeconds);
+            document.getElementById('throughput').textContent = throughput;
+            
+            // Mock latency (in real implementation, this would come from Flink metrics)
+            document.getElementById('avgLatency').textContent = Math.round(Math.random() * 50 + 10) + 'ms';
+        }
+
+        function updateCharts(data) {
+            if (!data.data || data.data.length === 0) return;
+
+            const now = new Date().toLocaleTimeString();
+            const revenues = data.data.map(item => item.revenue);
+            const maxRevenue = Math.max(...revenues);
+            const avgRevenue = revenues.reduce((sum, rev) => sum + rev, 0) / revenues.length;
+
+            // Update revenue trend
+            if (revenueChart.data.labels.length > 20) {
+                revenueChart.data.labels.shift();
+                revenueChart.data.datasets[0].data.shift();
+                revenueChart.data.datasets[1].data.shift();
+            }
+            revenueChart.data.labels.push(now);
+            revenueChart.data.datasets[0].data.push(maxRevenue);
+            revenueChart.data.datasets[1].data.push(avgRevenue);
+            revenueChart.update('none');
+
+            // Update distribution chart (top 10)
+            const top10 = data.data.slice(0, 10);
+            distributionChart.data.labels = top10.map(item => `Order ${item.orderkey}`);
+            distributionChart.data.datasets[0].data = top10.map(item => item.revenue);
+            distributionChart.update();
+
+            // Update processing timeline
+            processedRecords += data.data.length;
+            const currentTime = Date.now();
+            const elapsedSeconds = (currentTime - startTime) / 1000;
+            const currentThroughput = Math.round(processedRecords / elapsedSeconds);
+            
+            if (timelineChart.data.labels.length > 30) {
+                timelineChart.data.labels.shift();
+                timelineChart.data.datasets[0].data.shift();
+            }
+            timelineChart.data.labels.push(now);
+            timelineChart.data.datasets[0].data.push(currentThroughput);
+            timelineChart.update('none');
+
+            // Update date distribution
+            const dateCounts = {};
+            data.data.forEach(item => {
+                const date = new Date(item.orderdate).toLocaleDateString();
+                dateCounts[date] = (dateCounts[date] || 0) + 1;
+            });
+            
+            dateChart.data.labels = Object.keys(dateCounts);
+            dateChart.data.datasets[0].data = Object.values(dateCounts);
+            dateChart.update();
+        }
+
+        function connectWebSocket() {
+            try {
+                socket = new WebSocket('ws://localhost:8080');
+                
+                socket.onopen = function(event) {
+                    console.log('WebSocket connected successfully');
+                    statusDot.classList.add('connected');
+                    connectionStatus.textContent = 'Connected to Flink stream processing system';
+                    
+                    if (reconnectInterval) {
+                        clearInterval(reconnectInterval);
+                        reconnectInterval = null;
+                    }
+                };
+
+                socket.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('Received data:', data);
+                        
+                        if (data.type === 'threads') {
+                            console.log('Received thread data, thread count:', data.data ? data.data.length : 0);
+                            updateThreads(data);
+                        } else {
+                            console.log('Received TopN data');
+                            updateTable(data);
+                            updateMetrics(data);
+                            updateCharts(data);
+                            updateFlowDiagram(data);
+                        }
+                        updateLastUpdateTime();
+                    } catch (e) {
+                        console.error('Data parsing error:', e);
+                        console.error('Raw data:', event.data);
+                    }
+                };
+
+                socket.onclose = function(event) {
+                    console.log('WebSocket connection closed');
+                    statusDot.classList.remove('connected');
+                    connectionStatus.textContent = 'Connection closed - Reconnecting...';
+                    
+                    if (!reconnectInterval) {
+                        reconnectInterval = setInterval(connectWebSocket, 5000);
+                    }
+                };
+
+                socket.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                    statusDot.classList.remove('connected');
+                    connectionStatus.textContent = 'Connection error - Please ensure backend is running';
+                };
+
+            } catch (e) {
+                console.error('WebSocket initialization failed:', e);
+                statusDot.classList.remove('connected');
+                connectionStatus.textContent = 'Cannot connect - Please start backend system';
+            }
+        }
+
+        function updateLastUpdateTime() {
+            const now = new Date();
+            lastUpdate.textContent = now.toLocaleTimeString('en-US');
+        }
+
+        function updateTable(data) {
+            lastData = data;
+            
+            if (!data.data || data.data.length === 0) {
+                tableContent.innerHTML = '<div class="loading">No data available</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Order Key</th>
+                            <th>Revenue</th>
+                            <th>Order Date</th>
+                            <th>Ship Priority</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            data.data.forEach((item, index) => {
+                const orderDate = new Date(item.orderdate);
+                const formattedDate = orderDate.toLocaleDateString('en-US');
+                const formattedRevenue = '$' + item.revenue.toLocaleString('en-US', {minimumFractionDigits: 2});
+
+                let rankClass = '';
+                if (item.rank === 1) rankClass = 'rank-1';
+                else if (item.rank === 2) rankClass = 'rank-2';
+                else if (item.rank === 3) rankClass = 'rank-3';
+
+                html += `
+                    <tr>
+                        <td class="${rankClass}">${item.rank}</td>
+                        <td class="orderkey">${item.orderkey}</td>
+                        <td class="revenue">${formattedRevenue}</td>
+                        <td class="date">${formattedDate}</td>
+                        <td class="priority">${item.shippriority}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            tableContent.innerHTML = html;
+        }
+
+        function updateThreads(data) {
+            if (!data.data || data.data.length === 0) {
+                threadContent.innerHTML = '<div class="loading">No thread information available</div>';
+                return;
+            }
+
+            let html = '<div class="thread-grid">';
+            
+            // Sort by importance: important threads first
+            data.data.sort((a, b) => {
+                if (a.type === 'important' && b.type !== 'important') return -1;
+                if (a.type !== 'important' && b.type === 'important') return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            data.data.forEach(thread => {
+                const shortName = thread.name.length > 40 ? 
+                    thread.name.substring(0, 40) + '...' : thread.name;
+                
+                const cardClass = thread.type === 'important' ? 'thread-card important' : 'thread-card';
+                const typeLabel = thread.type === 'important' ? 'Critical' : 'Normal';
+                
+                html += `
+                    <div class="${cardClass}" title="${thread.name}">
+                        <div class="thread-name">
+                            ${shortName}
+                            <span class="thread-type type-${thread.type}">${typeLabel}</span>
+                        </div>
+                        <div class="thread-info">
+                            <span class="thread-state state-${thread.state}">${thread.state}</span>
+                        </div>
+                        <div class="thread-info">ID: ${thread.id}</div>
+                        <div class="thread-info">Priority: ${thread.priority}</div>
+                        <div class="thread-info">CPU Time: ${thread.cpuTime}ms</div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            threadContent.innerHTML = html;
+        }
+
+        // Initialize everything when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded, initializing dashboard...');
+            initializeCharts();
+            initializeFlowDiagram();
+            connectWebSocket();
+        });
+
+        // Handle window resize for flow diagram
+        window.addEventListener('resize', function() {
+            if (flowSvg) {
+                const container = d3.select('#flowDiagram');
+                const containerNode = container.node();
+                const width = containerNode.clientWidth || 1200;
+                const height = containerNode.clientHeight || 400;
+                flowSvg.attr('width', width).attr('height', height);
+            }
+        });
+
+        // Cleanup before page unload
+        window.addEventListener('beforeunload', function() {
+            if (socket) {
+                socket.close();
+            }
+            if (reconnectInterval) {
+                clearInterval(reconnectInterval);
+            }
+        });
+    </script>
+</body>
+</html> 
